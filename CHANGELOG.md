@@ -28,5 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SOCKS5_AUTH_REQUIRED`.
 - `README.md`, `CLIENT.md`, `DEPLOY.md`.
 
+### Distribution
+
+- Prebuilt static binaries attached to the `v0.1.0` GitHub release:
+  `x86_64-linux-gnu` and `x86_64-pc-windows-msvc`.
+
 [Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.1.0

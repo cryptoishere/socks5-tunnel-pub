@@ -41,7 +41,10 @@ In short:
 
 ## Build
 
-Static binary for production:
+Prebuilt binaries are attached to each GitHub release. To build from
+source:
+
+**Linux (static, glibc-only):**
 
 ```bash
 cargo build --release --target x86_64-unknown-linux-gnu --bin server
@@ -51,6 +54,21 @@ Artifact:
 
 ```
 target/x86_64-unknown-linux-gnu/release/server
+```
+
+**Windows (MSVC):**
+
+Cross-compiling from Linux uses [`cargo-xwin`](https://github.com/rust-cross/cargo-xwin),
+which downloads the Windows SDK and MSVC runtime libraries:
+
+```bash
+cargo xwin build --release --target x86_64-pc-windows-msvc --bin server
+```
+
+Artifact:
+
+```
+target/x86_64-pc-windows-msvc/release/server.exe
 ```
 
 ## Configuration
@@ -86,6 +104,17 @@ Key behaviours:
 - **Public IP monitor** — a background thread watches the host's
   outbound public IP and reports changes to a central endpoint. It runs
   independently of the event loop and cannot block it.
+
+### Running on Windows
+
+Environment variables can be set in PowerShell for a one-off test:
+
+```powershell
+$env:RUST_LOG = "info"
+$env:SOCKS5_USERS = "alice:secret"
+$env:SOCKS5_AUTH_REQUIRED = "true"
+.\server.exe
+```
 
 ## Deploying on a public interface
 
