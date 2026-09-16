@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-16
+
+### Fixed
+Fixed an issue where the return value from a spawned task was stored in a block scope.
+
+When the block ended, the return value was automatically dropped.
+
+Dropping the value caused the IpMonitor to stop, which in turn caused the program to terminate unexpectedly.
+
 ## [0.1.1] - 2026-09-16
 
 ### Changed
@@ -44,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prebuilt static binaries attached to the `v0.1.0` GitHub release:
   `x86_64-linux-gnu` and `x86_64-pc-windows-msvc`.
 
-[Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.1.2
 [0.1.1]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.1.1
 [0.1.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.1.0
