@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-16
+
+Changed
+- Replaced `sled::open(db_path())` with a configured `sled::Config`.
+  - Configured sled to use `Mode::HighThroughput`.
+  - Set the sled cache capacity to 64 MiB.
+- Updated rustls from `"0.23.44"` to `"0.23.45"`.
+- Moved underlying database initialization behind the `socks5-server` feature flag.
+- The startup guard is activated when signature authentication is enabled via the `SOCKS5_SIGNATURE_AUTH` environment variable.
+
 ## [0.1.0] - 2026-09-15
 
 ### Added

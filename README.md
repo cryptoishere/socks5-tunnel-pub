@@ -85,6 +85,36 @@ target/x86_64-pc-windows-msvc/release/server.exe
 
 Listen address: `0.0.0.0:1082`.
 
+### Safe default
+
+At startup the server refuses to bind to a non-loopback address unless
+at least one of the following is true:
+
+* `SOCKS5_USERS` is set (RFC 1929 required), **or**
+* `SOCKS5_AUTH_REQUIRED=true` is explicitly set (and `SOCKS5_USERS` is
+  present), **or**
+* `SOCKS5_SIGNATURE_AUTH=true` is set.
+
+To run bound to `0.0.0.0` with authentication:
+
+```bash
+RUST_LOG=info \
+SOCKS5_USERS=alice:secret \
+SOCKS5_AUTH_REQUIRED=true \
+SOCKS5_RATE_MAX=1200 \
+SOCKS5_RATE_WINDOW_SECS=60 \
+SOCKS5_QUOTA_MAX=256 \
+/opt/socks5-tunnel/server
+```
+
+To run loopback-only (the common case for local development):
+
+```bash
+RUST_LOG=debug \
+/opt/socks5-tunnel/server
+# then connect with `client` to 127.0.0.1:1082
+```
+
 ## Operations
 
 See `DEPLOY.md` for the systemd unit, sandboxing profile,
@@ -114,6 +144,35 @@ $env:RUST_LOG = "info"
 $env:SOCKS5_USERS = "alice:secret"
 $env:SOCKS5_AUTH_REQUIRED = "true"
 .\server.exe
+```
+
+Or via a wrapper script `run_server.bat` next to the binary, which
+scopes the variables with `setlocal`:
+
+```bat
+@echo off
+setlocal
+set RUST_LOG=info
+set SOCKS5_USERS=alice:secret
+set SOCKS5_AUTH_REQUIRED=true
+set SOCKS5_RATE_MAX=1200
+set SOCKS5_QUOTA_MAX=256
+server.exe %*
+endlocal
+```
+
+For a Windows service, use [`nssm`](https://nssm.cc/) so the process
+receives `CTRL_C_EVENT` on stop and the graceful-shutdown drain runs
+as it does under systemd on Linux:
+
+```cmd
+nssm install Socks5Tunnel "C:\socks5-tunnel\server.exe"
+nssm set Socks5Tunnel AppDirectory C:\socks5-tunnel
+nssm set Socks5Tunnel AppEnvironmentExtra ^
+    RUST_LOG=info ^
+    SOCKS5_USERS=alice:secret ^
+    SOCKS5_AUTH_REQUIRED=true
+nssm start Socks5Tunnel
 ```
 
 ## Deploying on a public interface
