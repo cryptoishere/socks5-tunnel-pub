@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1] - 2026-09-16
 
-Changed
+### Changed
+
 - Replaced `sled::open(db_path())` with a configured `sled::Config`.
   - Configured sled to use `Mode::HighThroughput`.
   - Set the sled cache capacity to 64 MiB.
@@ -43,5 +44,6 @@ Changed
 - Prebuilt static binaries attached to the `v0.1.0` GitHub release:
   `x86_64-linux-gnu` and `x86_64-pc-windows-msvc`.
 
-[Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.1.1
 [0.1.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.1.0
