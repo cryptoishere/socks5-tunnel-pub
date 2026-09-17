@@ -47,7 +47,7 @@ source:
 **Linux (static, glibc-only):**
 
 ```bash
-cargo build --release --target x86_64-unknown-linux-gnu --bin server
+cargo build --release --features socks5-server --target x86_64-unknown-linux-gnu --bin server
 ```
 
 Artifact:
@@ -62,7 +62,7 @@ Cross-compiling from Linux uses [`cargo-xwin`](https://github.com/rust-cross/car
 which downloads the Windows SDK and MSVC runtime libraries:
 
 ```bash
-cargo xwin build --release --target x86_64-pc-windows-msvc --bin server
+cargo xwin build --release --features socks5-server --target x86_64-pc-windows-msvc --bin server
 ```
 
 Artifact:
@@ -87,16 +87,6 @@ Listen address: `0.0.0.0:1082`.
 
 ### Safe default
 
-At startup the server refuses to bind to a non-loopback address unless
-at least one of the following is true:
-
-* `SOCKS5_USERS` is set (RFC 1929 required), **or**
-* `SOCKS5_AUTH_REQUIRED=true` is explicitly set (and `SOCKS5_USERS` is
-  present), **or**
-* `SOCKS5_SIGNATURE_AUTH=true` is set.
-
-To run bound to `0.0.0.0` with authentication:
-
 ```bash
 RUST_LOG=info \
 SOCKS5_USERS=alice:secret \
@@ -105,14 +95,6 @@ SOCKS5_RATE_MAX=1200 \
 SOCKS5_RATE_WINDOW_SECS=60 \
 SOCKS5_QUOTA_MAX=256 \
 /opt/socks5-tunnel/server
-```
-
-To run loopback-only (the common case for local development):
-
-```bash
-RUST_LOG=debug \
-/opt/socks5-tunnel/server
-# then connect with `client` to 127.0.0.1:1082
 ```
 
 ## Operations
