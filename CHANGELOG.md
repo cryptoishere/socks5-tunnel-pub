@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-23
+
+### Added
+
+- **Encrypted tunnel between client and server** (`lib::crypto::tunnel`).
+  - ChaCha20-Poly1305 AEAD (RFC 8439) framing over TCP.
+  - Per-direction keys derived via HMAC-SHA256 from the existing shared
+    `ProxySecret` and a fresh 128-bit client nonce, so no new key
+    material needs to be provisioned.
+  - Plaintext handshake: client sends `Hello` (address, timestamp,
+    nonce, HMAC tag), server replies with `Welcome` (HMAC tag over the
+    client tag). All bytes after the Welcome are framed ciphertext.
+  - Strict monotonic nonce counter per direction. Reordering, replay,
+    and truncation are rejected by the AEAD tag check or the counter
+    check.
+  - Backpressure-aware: `read_remote` stops pulling ciphertext once the
+    browser-side output buffer is full, so TCP backpressure propagates
+    end-to-end.
+  - Half-close is preserved across the tunnel: the client only issues
+    `Shutdown::Write` on the remote after the ciphertext pipeline has
+    fully drained.
+
+- `SOCKS5_TUNNEL_ENCRYPTION` environment variable (default `on`).
+  - When `on`, the server runs the tunnel handshake before the SOCKS5
+    state machine and rejects any non-tunnel first byte.
+  - When `off`, the server behaves exactly as in `0.2.0`: plaintext
+    SOCKS5, HMAC-signed RFC 1929 credentials.
+
+- `chacha20poly1305` dependency (RustCrypto, `alloc` feature only).
+
+### Changed
+
+- **`browser_client` is now an encrypted pipe, not a SOCKS5 chaining
+  relay.**
+  - The client no longer parses SOCKS5, no longer performs the RFC 1929
+    exchange, and no longer forwards a rewritten greeting.
+  - It accepts the browser's plaintext SOCKS5 on `127.0.0.1:1080`,
+    completes the tunnel handshake with the remote, and then shuttles
+    raw bytes through AEAD frames. The remote proxy performs all SOCKS5
+    parsing, DNS resolution, and target connection — inside the tunnel.
+  - `BrowserClientConfig` now carries `address: String` and
+    `secret: ProxySecret` instead of a `CredentialsProvider`.
+  - The SOCKS5 greeting the browser sees is the server's — the client
+    has no protocol opinions of its own.
+
+- Server connection state machine extended with two handshake states
+  (`TunnelHandshake`, `TunnelWelcome`) before `Greeting`. Legacy
+  plaintext clients are still served when the first byte is not the
+  tunnel magic; a client that starts with `0x05` bypasses the tunnel
+  and is handled by the existing SOCKS5 path.
+
+- On the tunnel path, the greeting step forces method `0x00`
+  (NO AUTH) once the tunnel handshake succeeds. The tunnel already
+  proved identity; the browser's SOCKS5 greeting cannot downgrade it.
+
+### Security
+
+- Network traffic between client and server is now opaque. A passive
+  observer sees the client's registered proxy address and a timestamp
+  in the plaintext Hello, then ciphertext only. The SOCKS5 greeting,
+  CONNECT request, destination hostname (when ATYP=domain), and all
+  payloads are inside encrypted frames.
+
+- Plaintext payloads inside the tunnel are still readable by the
+  server. The tunnel does not change the trust model for HTTP: only the
+  browser's own TLS to the target hides HTTPS payloads from the
+  server. The tunnel hides the *transport* from the network, not the
+  payload from the proxy operator.
+
 ## [0.2.0] - 2026-09-17
 
 ### Changed
@@ -136,7 +205,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prebuilt static binaries attached to the `v0.1.0` GitHub release:
   `x86_64-linux-gnu` and `x86_64-pc-windows-msvc`.
 
-[Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.3.0
 [0.2.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.2.0
 [0.1.2]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.1.2
 [0.1.1]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.1.1

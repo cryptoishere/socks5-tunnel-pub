@@ -4,13 +4,18 @@ A minimal SOCKS5 proxy server built on `mio` with a non-blocking event
 loop, RFC 1928 message framing, RFC 1929 username/password
 authentication, and server-side DNS resolution over DNS-over-TLS.
 
-> **Security warning.** This server does not encrypt its transport.
-> When bound to a non-loopback address without SOCKS5 authentication
-> enabled, every byte on the wire — including RFC 1929 credentials — is
-> visible to anyone on the path, and the port will be discovered and
-> abused by internet scanners within minutes. The server refuses to
-> start in that configuration by default; see
-> [Configuration](#configuration).
+> **Security warning.** The transport between client and server is
+> encrypted with ChaCha20-Poly1305 (see `lib::crypto::tunnel`). This
+> protects the SOCKS5 conversation, RFC 1929 credentials, and any
+> plaintext payloads against a passive network observer.
+>
+> It does **not** protect against the server operator. The server sees
+> every plaintext byte inside the tunnel — including destinations and
+> any unencrypted application protocol. For end-to-end confidentiality,
+> the browser must speak HTTPS (or another encrypted protocol) to the
+> target. Use `SOCKS5_TUNNEL_ENCRYPTION=off` only when the transport is
+> already protected by another layer (SSH, WireGuard, a private
+> network).
 
 ## Protocol stack
 
@@ -21,6 +26,7 @@ to the payload framing, not to the socket or the transport.
 |---|---|---|
 | Socket API | POSIX sockets (not an RFC) | `mio::net::{TcpListener, TcpStream}` |
 | TCP | RFC 9293 | OS kernel |
+| **Tunnel** | ChaCha20-Poly1305 AEAD, RFC 8439 | `lib::crypto::tunnel` (client and server) |
 | **SOCKS5 messages** | **RFC 1928** | `server` |
 | SOCKS5 username/password auth | RFC 1929 | `process_handshake` (`Authenticating`), `Socks5AuthConfig` |
 | DNS-over-TLS | RFC 7858 | `lib::dns` |
@@ -29,53 +35,33 @@ In short:
 
 * the **socket** is POSIX, not an RFC;
 * the **transport** is TCP (RFC 9293);
-* the **protocol carried on top** is SOCKS5 (RFC 1928), with the optional
-  RFC 1929 auth sub-protocol;
+* the **tunnel** is ChaCha20-Poly1305 (RFC 8439), keyed from the
+  HMAC secret already shared with the hub;
+* the **protocol carried inside the tunnel** is SOCKS5 (RFC 1928),
+  with the optional RFC 1929 auth sub-protocol;
 * name resolution is done server-side over DoT (RFC 7858).
 
 ## Architecture
 
 ```
-[client] --SOCKS5--> [server:1082] --TCP--> [target]
+[browser] --SOCKS5(plaintext)--> [client:1080]
+|
+| ChaCha20-Poly1305 over TCP
+v
+[server:1082] --TCP--> [target]
 ```
 
-## Build
-
-Prebuilt binaries are attached to each GitHub release. To build from
-source:
-
-**Linux (static, glibc-only):**
-
-```bash
-cargo build --release --features socks5-server --target x86_64-unknown-linux-gnu --bin server
-```
-
-Artifact:
-
-```
-target/x86_64-unknown-linux-gnu/release/server
-```
-
-**Windows (MSVC):**
-
-Cross-compiling from Linux uses [`cargo-xwin`](https://github.com/rust-cross/cargo-xwin),
-which downloads the Windows SDK and MSVC runtime libraries:
-
-```bash
-cargo xwin build --release --features socks5-server --target x86_64-pc-windows-msvc --bin server
-```
-
-Artifact:
-
-```
-target/x86_64-pc-windows-msvc/release/server.exe
-```
+The client binds `127.0.0.1:1080` and is the only process the browser
+needs to know about. The server binds `0.0.0.0:1082` and is the only
+process exposed to the network. All SOCKS5 parsing, DNS resolution, and
+target connection happen on the server, inside the encrypted tunnel.
 
 ## Configuration
 
 | Env | Required | Default | Meaning |
 |---|---|---|---|
 | `RUST_LOG` | no | `off` | `tracing` filter, e.g. `info`, `debug`, `server=debug`. |
+| `SOCKS5_TUNNEL_ENCRYPTION` | no | `on` | Encrypt the transport between client and server with ChaCha20-Poly1305. Set to `off` only when the transport is already protected. |
 | `SOCKS5_USERS` | no | — | RFC 1929 users, e.g. `alice:secret,bob:hunter2`. If unset, the server offers no-auth only. |
 | `SOCKS5_AUTH_REQUIRED` | no | `false` | If `true`, refuse to start when `SOCKS5_USERS` is empty. |
 | `SOCKS5_SIGNATURE_AUTH` | no | `on` | See `lib::services::setup::PeerSetup`. |
@@ -84,6 +70,42 @@ target/x86_64-pc-windows-msvc/release/server.exe
 | `SOCKS5_QUOTA_MAX` | no | `256` | Concurrent connections per IP. `0` disables. |
 
 Listen address: `0.0.0.0:1082`.
+
+### Tunnel handshake
+
+A client opens a TCP connection to the server and sends a plaintext
+`Hello`:
+
+```
+MAGIC_HELLO(16) || addr_len(1) || address(N) || timestamp(8) || nonce(16) || HMAC-SHA256(32)
+```
+
+The HMAC is computed over all preceding bytes using the account's
+`ProxySecret`. The server looks up the account by `address`, checks
+revocation, expiry, and timestamp freshness (±60 s), verifies the tag,
+and replies with:
+
+```
+MAGIC_WELCOME(16) || HMAC-SHA256(32)
+```
+
+
+Both sides then derive two independent keys —
+
+```
+k_c2s = HMAC(secret, "socks5-tunnel-v1-c2s" || client_nonce)
+k_s2c = HMAC(secret, "socks5-tunnel-v1-s2c" || client_nonce)
+```
+
+— and every subsequent byte is a frame:
+
+```
+u16 ciphertext_len || 12-byte nonce (counter) || ciphertext || Poly1305 tag
+```
+
+The nonce counter is strictly monotonic in each direction; the decrypt
+side rejects any frame whose nonce is not exactly the next one. This
+eliminates reordering and replay without any additional protocol.
 
 ### Safe default
 
@@ -107,10 +129,14 @@ Key behaviours:
 - **Graceful shutdown** — `SIGINT` / `SIGTERM` stops accepting new
   connections and drains live ones for up to 30 s. A second signal
   forces exit.
-- **Timeouts** — 20 s handshake/connect, 300 s idle.
-- **Buffers** — 1 MB per direction per connection.
+- **Timeouts** — 20 s handshake/connect (including the tunnel
+  handshake), 300 s idle.
+- **Buffers** — 1 MB per direction per connection, plus a 2 MB
+  ciphertext staging buffer per direction inside the tunnel.
+- **Encryption** — ChaCha20-Poly1305 AEAD, RFC 8439, keyed via
+  HMAC-SHA256 from the account secret. No additional key material.
 - **DNS** — resolved server-side over DNS-over-TLS (Cloudflare + Quad9),
-  per RFC 7858.
+  per RFC 7858. The DNS query is inside the tunnel.
 - **Admission control** — per-IP token-bucket rate limit and per-IP
   concurrent-connection quota; both disabled by setting the max to `0`.
 - **Public IP monitor** — a background thread watches the host's
@@ -159,19 +185,34 @@ nssm start Socks5Tunnel
 
 ## Deploying on a public interface
 
-If the server must be reachable from the internet, at minimum:
+The tunnel authenticates and encrypts every connection to the server.
+The remaining hardening steps are:
 
-1. Enable `SOCKS5_USERS` and `SOCKS5_AUTH_REQUIRED=true`.
-2. Set a low `SOCKS5_RATE_MAX` (e.g. `5`) and small `SOCKS5_QUOTA_MAX`
-   (e.g. `4`) so scanners cannot monopolise resources.
-3. Add a firewall allowlist for your client IPs.
-4. Better still: tunnel the plaintext SOCKS5 stream over SSH, WireGuard,
-   or another encrypted transport, and keep the server bound to
-   loopback.
+1. Ensure `SOCKS5_SIGNATURE_AUTH` is enabled (it is, by default) and
+   that the local account is registered with the hub.
+2. Keep `SOCKS5_TUNNEL_ENCRYPTION=on`. Disabling it turns every
+   connection into plaintext SOCKS5 and defeats the handshake.
+3. Set a low `SOCKS5_RATE_MAX` (e.g. `5`) and small `SOCKS5_QUOTA_MAX`
+   (e.g. `4`) so scanners cannot monopolise resources even though
+   they cannot authenticate.
+4. Add a firewall allowlist for known client IPs.
+5. Do **not** rely on RFC 1929 users alone on a public interface:
+   `SOCKS5_USERS` credentials are only safe inside the tunnel. The
+   tunnel handshake is the authentication mechanism that matters.
 
-Without authentication, a public server is found within minutes and
-abused within hours as an open relay for spam, scraping, and other
-traffic that will get your IP blocklisted.
+Without a shared secret, an unauthenticated client cannot complete the
+tunnel handshake and is dropped at the first byte. The server no longer
+serves a plaintext SOCKS5 path to unknown clients by default — the
+legacy path exists only for clients that begin with `0x05` and are
+explicitly expected.
+
+## Client
+
+See [`CLIENT.md`](CLIENT.md). The client is a separate binary that
+binds `127.0.0.1:1080`, completes the tunnel handshake with the server,
+and forwards the browser's plaintext SOCKS5 conversation through the
+encrypted channel. It performs no SOCKS5 parsing and no DNS
+resolution.
 
 ## License
 
