@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-28
+
+### Security
+
+- **Signature authentication is now fail-closed.** When
+  `SOCKS5_SIGNATURE_AUTH=true` (the default), the server only accepts
+  clients that complete the encrypted tunnel handshake. Every other
+  entry path — plaintext SOCKS5 greetings, RFC 1929 exchanges, NO-AUTH
+  greetings, malformed first bytes — is rejected before any state
+  machine logic runs.
+
+  This closes the open-proxy fallback that was exercised in a live
+  attack on 2026-09-28. Three defects combined to make it possible:
+
+  1. `build_signature_config()` returned `None` when the local account
+     was missing or unreadable, and `main()` continued to run with
+     `auth.required == false`. The listener then offered and accepted
+     NO AUTH to any client.
+  2. `PendingConnection` in `TunnelHandshake` fell back to the plaintext
+     `Greeting` state whenever the first byte was not the tunnel magic.
+     Any client could bypass the tunnel entirely.
+  3. The `Greeting` method-selection branch accepted the RFC 1929
+     signature sub-protocol outside the tunnel whenever
+     `signature_config.is_some()`, exposing signed credentials to a
+     passive observer.
+
+- **Startup guard.** `SOCKS5_SIGNATURE_AUTH=true` together with
+  `SOCKS5_TUNNEL_ENCRYPTION=off` is now a fatal error. Signature auth
+  without a tunnel would send credentials in the clear.
+
+- **Replay protection for signed RFC 1929 credentials is bound to the
+  peer IP.** A credential block captured from another host no longer
+  validates.
+
+### Changed
+
+- `build_signature_config()` now returns
+  `Result<Option<Arc<Socks5SignatureConfig>>, _>`. When the flag is
+  enabled and the local account cannot be loaded, the process exits
+  with a non-zero status instead of silently downgrading to an
+  unauthenticated listener.
+
+- `PendingConnection` carries a new `strict_signature_only: bool` field,
+  set from `signature_config.is_some()`. In strict mode:
+
+  - `HandshakeState::TunnelHandshake` returns `PendingAction::Close` on
+    any first byte that is not `tunnel::MAGIC_HELLO[0]`. The plaintext
+    fallback to `Greeting` is removed.
+  - `HandshakeState::Greeting` queues `[0x05, 0xff]` and closes if it is
+    ever entered before `tunnel_active` is true. This is defence in
+    depth — the previous state should be unreachable.
+  - The method-selection expression cannot select `0x00` (NO AUTH) or
+    `0x02` (USER/PASS) before the tunnel is established.
+
+- `SOCKS5_SIGNATURE_AUTH` now **means what the documentation always
+  said it meant**. Previously the flag defaulted to `true` but silently
+  disabled itself on any provisioning error, so a running server could
+  be unauthenticated while the operator believed signature auth was on.
+  The default remains `true`, and the failure mode is now *refuse to
+  start*, not *fall back to open proxy*.
+
+- `is_signature_auth_enabled()` no longer has an `.unwrap_or(true)`
+  side-effect that hid the missing-flag case in logs. The env var is
+  parsed the same way, but absence is now explicit and logged.
+
+### Added
+
+- Regression tests asserting:
+
+  - a strict-mode listener drops `[0x05, 0x01, 0x00]` (NO-AUTH
+    greeting) with zero response bytes;
+  - a strict-mode listener drops `[0x05, 0x01, 0x02]` (USER/PASS
+    greeting) with zero response bytes;
+  - `main()` exits non-zero when `SOCKS5_SIGNATURE_AUTH=true` and no
+    account is persisted;
+  - `main()` exits non-zero when `SOCKS5_SIGNATURE_AUTH=true` and
+    `SOCKS5_TUNNEL_ENCRYPTION=off`.
+
+### Fixed
+
+- The tunnel handshake is now the *only* authentication path when
+  signature auth is enabled. Operators who relied on the (broken)
+  plaintext fallback for legacy clients must either provision those
+  clients for the tunnel or set `SOCKS5_SIGNATURE_AUTH=false` and
+  accept the risks documented in `README.md`.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added
@@ -205,7 +291,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prebuilt static binaries attached to the `v0.1.0` GitHub release:
   `x86_64-linux-gnu` and `x86_64-pc-windows-msvc`.
 
-[Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.3.1
 [0.3.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.3.0
 [0.2.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.2.0
 [0.1.2]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.1.2
