@@ -310,6 +310,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `x86_64-linux-gnu` and `x86_64-pc-windows-msvc`.
 
 [Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.4.0
 [0.3.1]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.3.1
 [0.3.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.3.0
 [0.2.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.2.0
