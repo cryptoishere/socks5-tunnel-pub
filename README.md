@@ -76,6 +76,13 @@ target connection happen on the server, inside the encrypted tunnel.
 | `SOCKS5_RATE_MAX` | no | `1200` | Per-IP connection attempts per window. `0` disables. |
 | `SOCKS5_RATE_WINDOW_SECS` | no | `60` | Rate-limit window. |
 | `SOCKS5_QUOTA_MAX` | no | `256` | Concurrent connections per IP. `0` disables. |
+| `LOCALAPPDATA` | no* | Windows-defined | Base directory for per-user application data on Windows. The database is stored under `CiGPeerApp\db`. |
+| `XDG_DATA_HOME` | no | `$HOME/.local/share` | Linux base directory for user-specific application data. The database is stored under `CiGPeerApp/db`. |
+
+\* On Windows, `LOCALAPPDATA` must be set. The server does not provide
+a fallback if it is missing. On Linux, `XDG_DATA_HOME` is optional;
+when unset, the server uses `$HOME/.local/share`. Linux also requires
+`HOME` to be set when `XDG_DATA_HOME` is unset.
 
 Listen address: `0.0.0.0:1082`.
 
@@ -175,6 +182,54 @@ u16 ciphertext_len || 12-byte nonce (counter) || ciphertext || Poly1305 tag
 The nonce counter is strictly monotonic in each direction; the decrypt
 side rejects any frame whose nonce is not exactly the next one. This
 eliminates reordering and replay without any additional protocol.
+
+# Data Directory
+
+The server stores its database in a platform-specific application data directory. The resulting path depends on the operating system and the environment variables available to the process.
+
+## Windows
+
+The server uses `LOCALAPPDATA` as its base directory and appends `CiGPeerApp\db`.
+
+For example, if `LOCALAPPDATA` is `C:\Users\Alice\AppData\Local`, the database directory is:
+
+```yaml
+C:\Users\Alice\AppData\Local\CiGPeerApp\db
+```
+
+**Important:** `LOCALAPPDATA` must be set. If it is missing, the server fails when resolving the database path.
+
+## Linux
+
+The server appends `CiGPeerApp/db` to the following base directory:
+
+- If `XDG_DATA_HOME` is set, its value is used.
+- Otherwise, the server uses `$HOME/.local/share`.
+
+### Example 1: `XDG_DATA_HOME` is set
+
+If `XDG_DATA_HOME=/var/lib/socks5-tunnel`, the database directory is:
+
+```bash
+/var/lib/socks5-tunnel/CiGPeerApp/db
+```
+
+### Example 2: `XDG_DATA_HOME` is unset
+
+If `XDG_DATA_HOME` is unset and `HOME=/home/alice`, the database directory is:
+
+```swift
+/home/alice/.local/share/CiGPeerApp/db
+```
+
+If neither a usable `XDG_DATA_HOME` nor `HOME` is available, resolving the fallback path fails when `HOME` is unset.
+
+## Deployment Considerations
+
+- **Directory permissions:** Ensure the account running the server has permission to access and write to the database directory.
+- **Linux systemd service:** Set `XDG_DATA_HOME` explicitly if the database should reside in a dedicated location, such as `/var/lib/socks5-tunnel`.
+- **Windows service:** Ensure `LOCALAPPDATA` points to the intended data location for the service account.
+- **Changing the data directory:** Changing the relevant environment variable changes the database location. Existing data is not automatically migrated to the new location.
 
 ## Safe default
 

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-23
+
+### Added
+
+- Introduced a `PeerIdentity` abstraction to support identifying peers by IP address or Iroh endpoint identity in connection-control mechanisms.
+- Documented the platform-specific application data directory and the `XDG_DATA_HOME` environment variable in the README.
+
+### Changed
+
+- Generalized rate limiting and concurrent-connection quotas to operate on peer identities rather than IP addresses alone.
+- Updated dependencies, including `mio`, `tokio`, `rustls`, `webpki-roots`, `sha2`, and `rand`.
+- Improved the maximum tunnel frame payload constant by using `u16::MAX` instead of a numeric literal.
+- Updated README configuration and operational documentation.
+
+### Security
+
+- No intentional changes to the tunnel protocol or authentication policy are included in this release.
+
 ## [0.3.1] - 2026-09-28
 
 ### Security
@@ -291,7 +309,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prebuilt static binaries attached to the `v0.1.0` GitHub release:
   `x86_64-linux-gnu` and `x86_64-pc-windows-msvc`.
 
-[Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/cryptoishere/socks5-tunnel-pub/compare/v0.4.0...HEAD
 [0.3.1]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.3.1
 [0.3.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.3.0
 [0.2.0]: https://github.com/cryptoishere/socks5-tunnel-pub/releases/tag/v0.2.0
